@@ -1,15 +1,17 @@
 import os
 import sys
 from dataclasses import dataclass
+from typing import Union
 
-import PIL.Image
+from PIL import Image
 from loguru import logger
 
 logger.info("Importing libraries...")
 
-device = "mps"
+DEVICE = "mps"
 
 sys.path.append(".")
+sys.path.insert(0, "./carvekit")
 
 import numpy as np
 import torch
@@ -20,6 +22,7 @@ from torchvision import transforms
 from model.dualstylegan import DualStyleGAN
 from model.encoder.psp import pSp
 from model.encoder.align_all_parallel import align_face
+from carvekit.api.high import HiInterface
 
 logger.info("Libraries imported.")
 
@@ -111,7 +114,7 @@ def prepare_models():
 @dataclass
 class TransferEvent:
     type: str
-    data: PIL.Image.Image
+    data: Union[Image.Image, torch.Tensor]
 
 
 class Model:
@@ -131,7 +134,7 @@ class Model:
         ckpt = torch.load(os.path.join(MODEL_DIR, style_type, 'generator.pt'),
                           map_location=lambda storage, loc: storage)
         generator.load_state_dict(ckpt["g_ema"])
-        self.generator = generator.to(device)
+        self.generator = generator.to(DEVICE)
 
         # load encoder
         model_path = os.path.join(MODEL_DIR, 'encoder.pt')
@@ -139,10 +142,10 @@ class Model:
         opts = ckpt['opts']
         opts['checkpoint_path'] = model_path
         opts = Namespace(**opts)
-        opts.device = device
+        opts.device = DEVICE
         encoder = pSp(opts)
         encoder.eval()
-        self.encoder = encoder.to(device)
+        self.encoder = encoder.to(DEVICE)
 
         # load extrinsic style code
         self.exstyles = np.load(os.path.join(MODEL_DIR, style_type, MODEL_PATHS[style_type + '-S']["name"]),
@@ -150,15 +153,28 @@ class Model:
 
         self.face_predictor = dlib.shape_predictor(DLIB_FACE_MODEL_NAME)
 
+        # load segmentation model
+        self.segment = HiInterface(object_type="object", batch_size_seg=5, batch_size_matting=1,
+                                   device="cpu" if "cuda" not in DEVICE else DEVICE,
+                                   seg_mask_size=640, matting_mask_size=2048, trimap_prob_threshold=231,
+                                   trimap_dilation=30, trimap_erosion_iters=5, fp16=False)
+
         logger.info('Model successfully loaded!')
 
     def transfer(self, image_path: str):
-        def run_alignment(image_path: str) -> PIL.Image.Image:
+        def run_alignment(image_path: str) -> Image.Image:
             aligned_image = align_face(filepath=image_path, predictor=self.face_predictor)
             return aligned_image
 
         logger.info("Aligning image...")
-        I = self.transform(run_alignment(image_path)).unsqueeze(dim=0).to(device)
+        aligned = run_alignment(image_path)
+
+        logger.info("Segmenting image...")
+        segmented = self.segment([aligned])[0]
+        background = Image.new("RGBA", segmented.size, (255, 255, 255))
+        segmented = Image.alpha_composite(background, segmented).convert("RGB")
+
+        I = self.transform(segmented).unsqueeze(dim=0).to(DEVICE)
         yield TransferEvent('align', I[0].cpu())
 
         logger.info("Start style transfer")
@@ -184,7 +200,7 @@ class Model:
             logger.debug(f"reconstruction size: {len(img_rec)}")
             yield TransferEvent('reconstruction', img_rec[0].cpu())
 
-            latent = torch.tensor(self.exstyles[stylename]).repeat(2, 1, 1).to(device)
+            latent = torch.tensor(self.exstyles[stylename]).repeat(2, 1, 1).to(DEVICE)
             # latent[0] for both color and structrue transfer and latent[1] for only structrue transfer
             latent[1, 7:18] = instyle[0, 7:18]
             exstyle = self.generator.generator.style(
