@@ -166,19 +166,22 @@ class Model:
             aligned_image = align_face(filepath=image_path, predictor=self.face_predictor)
             return aligned_image
 
+        yield TransferEvent('original', Image.open(image_path))
+
         logger.info("Aligning image...")
         aligned = run_alignment(image_path)
+        yield TransferEvent('align', aligned)
 
         if segment:
             logger.info("Segmenting image...")
             segmented_transparent = self.segment([aligned])[0]
             background = Image.new("RGBA", segmented_transparent.size, (255, 255, 255))
             segmented = Image.alpha_composite(background, segmented_transparent).convert("RGB")
+            yield TransferEvent('segment', segmented)
 
             I = self.transform(segmented).unsqueeze(dim=0).to(DEVICE)
         else:
             I = self.transform(aligned).unsqueeze(dim=0).to(DEVICE)
-        yield TransferEvent('align', I[0].cpu())
 
         logger.info("Start style transfer")
 

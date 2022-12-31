@@ -1,3 +1,17 @@
+# CS3310 Course Project
+
+## Get Started
+
+```shell
+$ conda install pytorch torchvision torchaudio -c pytorch
+$ pip install Pillow opencv-python loguru tqdm skimage matplotlib
+$ pip fastapi sse-starlette uvicorn python-multipart
+$ make
+$ uvicorn app:app
+```
+
+![demo](doc_images/frontend.jpg)
+
 # DualStyleGAN - Official PyTorch Implementation
 
 <img src="./doc_images/overview.jpg" width="96%" height="96%">

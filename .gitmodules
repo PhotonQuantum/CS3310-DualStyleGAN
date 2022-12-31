@@ -1,3 +1,6 @@
 [submodule "carvekit"]
 	path = carvekit
 	url = https://github.com/OPHoperHPO/image-background-remove-tool
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/PhotonQuantum/cs3310-frontend
