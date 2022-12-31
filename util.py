@@ -1,3 +1,4 @@
+import PIL.Image
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -12,12 +13,18 @@ import random
 import math
     
 def visualize(img_arr):
-    plt.imshow(((img_arr.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8))
+    if isinstance(img_arr, torch.Tensor):
+        plt.imshow(((img_arr.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8))
+    elif isinstance(img_arr, PIL.Image.Image):
+        plt.imshow(img_arr)
     plt.axis('off')
 
 def save_image(img, filename):
-    tmp = ((img.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8)
-    cv2.imwrite(filename, cv2.cvtColor(tmp, cv2.COLOR_RGB2BGR))
+    if isinstance(img, torch.Tensor):
+        tmp = ((img.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8)
+        cv2.imwrite(filename, cv2.cvtColor(tmp, cv2.COLOR_RGB2BGR))
+    elif isinstance(img, PIL.Image.Image):
+        img.save(filename)
     
 def load_image(filename):
     transform = transforms.Compose([

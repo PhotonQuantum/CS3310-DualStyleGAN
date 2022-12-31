@@ -16,13 +16,13 @@ sys.path.insert(0, "./carvekit")
 import numpy as np
 import torch
 import dlib
-from util import load_image
 from argparse import Namespace
 from torchvision import transforms
 from model.dualstylegan import DualStyleGAN
 from model.encoder.psp import pSp
 from model.encoder.align_all_parallel import align_face
 from carvekit.api.high import HiInterface
+import cv2
 
 logger.info("Libraries imported.")
 
@@ -161,7 +161,7 @@ class Model:
 
         logger.info('Model successfully loaded!')
 
-    def transfer(self, image_path: str):
+    def transfer(self, image_path: str, style_id: int, segment: bool):
         def run_alignment(image_path: str) -> Image.Image:
             aligned_image = align_face(filepath=image_path, predictor=self.face_predictor)
             return aligned_image
@@ -169,28 +169,24 @@ class Model:
         logger.info("Aligning image...")
         aligned = run_alignment(image_path)
 
-        logger.info("Segmenting image...")
-        segmented = self.segment([aligned])[0]
-        background = Image.new("RGBA", segmented.size, (255, 255, 255))
-        segmented = Image.alpha_composite(background, segmented).convert("RGB")
+        if segment:
+            logger.info("Segmenting image...")
+            segmented_transparent = self.segment([aligned])[0]
+            background = Image.new("RGBA", segmented_transparent.size, (255, 255, 255))
+            segmented = Image.alpha_composite(background, segmented_transparent).convert("RGB")
 
-        I = self.transform(segmented).unsqueeze(dim=0).to(DEVICE)
+            I = self.transform(segmented).unsqueeze(dim=0).to(DEVICE)
+        else:
+            I = self.transform(aligned).unsqueeze(dim=0).to(DEVICE)
         yield TransferEvent('align', I[0].cpu())
 
         logger.info("Start style transfer")
-        style_id = 26
 
         # try to load the style image
         logger.info("Loading style image...")
         stylename = list(self.exstyles.keys())[style_id]
         stylepath = os.path.join(DATA_DIR, style_type, 'images/train', stylename)
         logger.debug('loading %s' % stylepath)
-        if os.path.exists(stylepath):
-            S = load_image(stylepath)
-            yield TransferEvent('target_style', S[0])
-        else:
-            logger.error('%s is not found' % stylename)
-            return
 
         logger.info("Style transfer...")
         with torch.no_grad():
@@ -201,7 +197,7 @@ class Model:
             yield TransferEvent('reconstruction', img_rec[0].cpu())
 
             latent = torch.tensor(self.exstyles[stylename]).repeat(2, 1, 1).to(DEVICE)
-            # latent[0] for both color and structrue transfer and latent[1] for only structrue transfer
+            # latent[0] for both color and structure transfer and latent[1] for only structure transfer
             latent[1, 7:18] = instyle[0, 7:18]
             exstyle = self.generator.generator.style(
                 latent.reshape(latent.shape[0] * latent.shape[1], latent.shape[2])).reshape(
@@ -211,15 +207,29 @@ class Model:
                                         truncation=0.7, truncation_latent=0, use_res=True,
                                         interp_weights=[0.6] * 7 + [1] * 11)
             img_gen = torch.clamp(img_gen.detach(), -1, 1)
-            logger.debug(f"generated size: {len(img_gen)}")
             yield TransferEvent('style_transfer', img_gen[0].cpu())
-            yield TransferEvent('structure_transfer', img_gen[1].cpu())
+            # yield TransferEvent('structure_transfer', img_gen[1].cpu())
+
             # deactivate color-related layers by setting w_c = 0
-            img_gen2, _ = self.generator([instyle], exstyle[0:1], z_plus_latent=True,
-                                         truncation=0.7, truncation_latent=0, use_res=True,
-                                         interp_weights=[0.6] * 7 + [0] * 11)
-            img_gen2 = torch.clamp(img_gen2.detach(), -1, 1)
-            logger.debug(f"generated size: {len(img_gen2)}")
-            yield TransferEvent('structure_transfer_alter', img_gen2[0].cpu())
+            # img_gen2, _ = self.generator([instyle], exstyle[0:1], z_plus_latent=True,
+            #                              truncation=0.7, truncation_latent=0, use_res=True,
+            #                              interp_weights=[0.6] * 7 + [0] * 11)
+            # img_gen2 = torch.clamp(img_gen2.detach(), -1, 1)
+            # logger.debug(f"generated size: {len(img_gen2)}")
+            # yield TransferEvent('structure_transfer_alter', img_gen2[0].cpu())
+
+        if segment:
+            mask = segmented_transparent.split()[-1]
+            cv_aligned = cv2.cvtColor(np.array(aligned), cv2.COLOR_RGB2BGR)
+            cv_mask = (np.array(mask) > 0).astype(np.uint8) * 255
+            inpainted = cv2.inpaint(cv_aligned, cv_mask, 3, cv2.INPAINT_TELEA)
+            inpainted = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
+            yield TransferEvent('inpainted', inpainted)
+
+            img_gen_pil = Image.fromarray(np.uint8((img_gen[0].cpu().detach().numpy().transpose(1, 2, 0) + 1) * 127.5))
+            gen_segmented = self.segment([img_gen_pil])[0]
+            inpainted = inpainted.resize(gen_segmented.size).convert("RGBA")
+            gen_final = Image.alpha_composite(inpainted, gen_segmented).convert("RGB")
+            yield TransferEvent('composed', gen_final)
 
         logger.info("Done.")
