@@ -161,7 +161,7 @@ class Model:
 
         logger.info('Model successfully loaded!')
 
-    def transfer(self, image_path: str, style_id: int, segment: bool):
+    def transfer(self, image_path: str, style_id: int, segment: bool, structure_only: bool):
         def run_alignment(image_path: str) -> Image.Image:
             aligned_image = align_face(filepath=image_path, predictor=self.face_predictor)
             return aligned_image
@@ -210,7 +210,8 @@ class Model:
                                         truncation=0.7, truncation_latent=0, use_res=True,
                                         interp_weights=[0.6] * 7 + [1] * 11)
             img_gen = torch.clamp(img_gen.detach(), -1, 1)
-            yield TransferEvent('style_transfer', img_gen[0].cpu())
+            img_gen = (img_gen[1] if structure_only else img_gen[0]).cpu()
+            yield TransferEvent('style_transfer', img_gen)
             # yield TransferEvent('structure_transfer', img_gen[1].cpu())
 
             # deactivate color-related layers by setting w_c = 0
@@ -229,7 +230,7 @@ class Model:
             inpainted = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
             yield TransferEvent('inpainted', inpainted)
 
-            img_gen_pil = Image.fromarray(np.uint8((img_gen[0].cpu().detach().numpy().transpose(1, 2, 0) + 1) * 127.5))
+            img_gen_pil = Image.fromarray(np.uint8((img_gen.detach().numpy().transpose(1, 2, 0) + 1) * 127.5))
             gen_segmented = self.segment([img_gen_pil])[0]
             inpainted = inpainted.resize(gen_segmented.size).convert("RGBA")
             gen_final = Image.alpha_composite(inpainted, gen_segmented).convert("RGB")

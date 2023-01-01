@@ -21,7 +21,7 @@ plt.show()
 prepare_models()
 model = Model()
 
-for ev in model.transfer(image_path, 26, True):
+for ev in model.transfer(image_path, 26, True, False):
     if isinstance(ev, TransferEvent):
         logger.info("Transfer event: {}".format(ev.type))
         save_image(ev.data, f"{ev.type}.png")

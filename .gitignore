@@ -1,2 +1,4 @@
 /checkpoint
 /dist
+__pycache__
+/static

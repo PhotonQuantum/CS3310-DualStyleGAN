@@ -47,11 +47,11 @@ async def upload(file: UploadFile):
 
 
 @app.get("/api/transfer")
-async def transfer(file_id: str, style_id: int, segment: bool):
+async def transfer(file_id: str, style_id: int, segment: bool, structure_only: bool):
     def generator():
         from packed_model import TransferEvent
         model = app.package["model"]
-        for ev in model.transfer(f"static/{file_id}.png", style_id, segment):
+        for ev in model.transfer(f"static/{file_id}.png", style_id, segment, structure_only):
             if isinstance(ev, TransferEvent):
                 logger.info("Transfer event: {}".format(ev.type))
                 path = f"static/{file_id}_{ev.type}.png"
