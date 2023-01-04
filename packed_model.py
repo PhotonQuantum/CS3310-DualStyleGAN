@@ -6,9 +6,11 @@ from typing import Union
 from PIL import Image
 from loguru import logger
 
+import config
+
 logger.info("Importing libraries...")
 
-DEVICE = "mps"
+DEVICE = config.DEVICE
 
 sys.path.append(".")
 sys.path.insert(0, "./carvekit")

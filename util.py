@@ -1,17 +1,25 @@
-import PIL.Image
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-import torchvision.transforms as transforms
-import cv2
-import torch
-from torch.utils import data
-from torch.nn import functional as F
-from torch import autograd
-from model.stylegan.op_cpu import conv2d_gradfix
-import random
 import math
-    
+import random
+
+import PIL.Image
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+from torch import autograd
+from torch.nn import functional as F
+from torch.utils import data
+
+import config
+
+if config.DEVICE == 'cuda':
+    from model.stylegan.op import conv2d_gradfix
+else:
+    from model.stylegan.op_cpu import conv2d_gradfix
+
+
 def visualize(img_arr):
     if isinstance(img_arr, torch.Tensor):
         plt.imshow(((img_arr.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8))
@@ -19,22 +27,25 @@ def visualize(img_arr):
         plt.imshow(img_arr)
     plt.axis('off')
 
+
 def save_image(img, filename):
     if isinstance(img, torch.Tensor):
         tmp = ((img.detach().numpy().transpose(1, 2, 0) + 1.0) * 127.5).astype(np.uint8)
         cv2.imwrite(filename, cv2.cvtColor(tmp, cv2.COLOR_RGB2BGR))
     elif isinstance(img, PIL.Image.Image):
         img.save(filename)
-    
+
+
 def load_image(filename):
     transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5,0.5,0.5]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-    
+
     img = Image.open(filename)
     img = transform(img)
-    return img.unsqueeze(dim=0)   
+    return img.unsqueeze(dim=0)
+
 
 def data_sampler(dataset, shuffle, distributed):
     if distributed:
