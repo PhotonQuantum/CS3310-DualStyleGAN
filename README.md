@@ -4,8 +4,8 @@
 
 ```shell
 $ conda install pytorch torchvision torchaudio -c pytorch
-$ pip install Pillow opencv-python loguru tqdm skimage matplotlib
-$ pip fastapi sse-starlette uvicorn python-multipart
+$ pip install Pillow opencv-python loguru tqdm scikit-image matplotlib
+$ pip install fastapi sse-starlette uvicorn python-multipart
 $ make
 $ uvicorn app:app
 ```
