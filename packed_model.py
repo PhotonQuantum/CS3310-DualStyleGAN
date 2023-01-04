@@ -26,6 +26,9 @@ from model.encoder.align_all_parallel import align_face
 from carvekit.api.high import HiInterface
 import cv2
 
+if "cuda" in DEVICE:
+    torch.backends.cudnn.benchmark = True
+
 logger.info("Libraries imported.")
 
 MODEL_DIR = os.path.join(os.getcwd(), "checkpoint")
